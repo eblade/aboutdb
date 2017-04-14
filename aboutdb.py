@@ -9,39 +9,40 @@ import sqlite3
 
 
 class colors:
-    reset='\033[0m'
-    bold='\033[01m'
-    disable='\033[02m'
-    underline='\033[04m'
-    reverse='\033[07m'
-    strikethrough='\033[09m'
-    invisible='\033[08m'
-    class fg:
-        black='\033[30m'
-        red='\033[31m'
-        green='\033[32m'
-        orange='\033[33m'
-        blue='\033[34m'
-        purple='\033[35m'
-        cyan='\033[36m'
-        lightgrey='\033[37m'
-        darkgrey='\033[90m'
-        lightred='\033[91m'
-        lightgreen='\033[92m'
-        yellow='\033[93m'
-        lightblue='\033[94m'
-        pink='\033[95m'
-        lightcyan='\033[96m'
-    class bg:
-        black='\033[40m'
-        red='\033[41m'
-        green='\033[42m'
-        orange='\033[43m'
-        blue='\033[44m'
-        purple='\033[45m'
-        cyan='\033[46m'
-        lightgrey='\033[47m'
+    reset = '\033[0m'
+    bold = '\033[01m'
+    disable = '\033[02m'
+    underline = '\033[04m'
+    reverse = '\033[07m'
+    strikethrough = '\033[09m'
+    invisible = '\033[08m'
 
+    class fg:
+        black = '\033[30m'
+        red = '\033[31m'
+        green = '\033[32m'
+        orange = '\033[33m'
+        blue = '\033[34m'
+        purple = '\033[35m'
+        cyan = '\033[36m'
+        lightgrey = '\033[37m'
+        darkgrey = '\033[90m'
+        lightred = '\033[91m'
+        lightgreen = '\033[92m'
+        yellow = '\033[93m'
+        lightblue = '\033[94m'
+        pink = '\033[95m'
+        lightcyan = '\033[96m'
+
+    class bg:
+        black = '\033[40m'
+        red = '\033[41m'
+        green = '\033[42m'
+        orange = '\033[43m'
+        blue = '\033[44m'
+        purple = '\033[45m'
+        cyan = '\033[46m'
+        lightgrey = '\033[47m'
 
 
 class Item:
@@ -74,6 +75,14 @@ class Link:
         return "<%s::%s -> '%s'>" % (self.identity, self.field, self.target_identity)
 
 
+class Delete:
+    def __init__(self, identity):
+        self.identity = identity
+
+    def __repr__(self):
+        return "<Delete %s>" % (self.identity)
+
+
 class Index:
     clean = re.compile('[^A-Z_]')
 
@@ -89,12 +98,7 @@ class Index:
         if self.schema is None:
             return Index.clean.sub('', self.field.upper())
         else:
-            return Index.clean.sub('',
-                '%s_%s' % (
-                    self.schema.upper(),
-                    self.name.upper(),
-                )
-            )
+            return Index.clean.sub('', '%s_%s' % (self.schema.upper(), self.name.upper()))
 
     @property
     def value_type(self):
@@ -114,19 +118,19 @@ class Index:
         conn.commit()
         logging.debug("Initialized index %s", self.table_name)
         return self
-    
+
     def handles(self, schema: str, item: Item):
         if self.schema is None:
             return item.field == self.field and schema is None
         else:
             return item.field == self.field and schema == self.schema
-    
+
     def handles_field(self, field: str):
         return self.schema is None and field == self.field
-    
+
     def handles_schema_and_field(self, schema: str, field: str):
         return self.schema == schema and field == self.field
-    
+
     def run(self, conn: sqlite3.Connection, item: Item):
         logging.debug('Index %s', repr(item))
 
@@ -152,7 +156,7 @@ class Index:
 
     def lookup(self, conn: sqlite3.Connection, value: str):
         cur = conn.execute("SELECT OBJECT_ID FROM %s WHERE VALUE = ?"
-                % self.table_name, value)
+                           % self.table_name, value)
         return (x[0] for x in cur)
 
     def get_value_by_id(self, conn, identity):
@@ -171,7 +175,7 @@ class AboutDB:
     def index(self, schema, name, field=None, fn=None):
         self._index.append(
             Index(schema, name, field=field, fn=fn)
-                .build(self._index_db_conn))
+            .build(self._index_db_conn))
 
     def store(self, identity, field, value):
         if type(value) is list:
@@ -186,12 +190,32 @@ class AboutDB:
         self._data.append(Link(identity, field, target_identity))
 
     def get(self, identity):
-        return dict({
-            x.field: self.get(x.target_identity) 
-                if hasattr(x, 'target_identity')
-                else x.value
-            for x in self._data if x.identity == identity
-        }, _id=identity)
+        logging.debug("Get %s", identity)
+        result = {}
+        for x in reversed(self._data):
+            logging.debug("Read %s", repr(x))
+            if x.identity != identity:
+                continue
+            if isinstance(x, Delete):
+                if not result:
+                    raise KeyError
+                else:
+                    break
+            if x.field in result.keys():
+                continue
+            if hasattr(x, 'target_identity'):
+                result[x.field] = self.get(x.target_identity)
+            else:
+                result[x.field] = x.value
+
+        if not result:
+            raise KeyError
+
+        return dict(result, _id=identity)
+
+    def delete(self, identity):
+        logging.debug("Delete %s", identity)
+        self._data.append(Delete(identity))
 
     def lookup(self, schema, field, value):
         logging.debug("Lookup %s::%s = %s", schema, field, value)
@@ -225,9 +249,7 @@ if __name__ == '__main__':
     db = AboutDB()
 
     db.index('Entry', 'taken_ts')
-    db.index('Entry', 'date',
-        field='taken_ts',
-        fn=lambda x: x[:10])
+    db.index('Entry', 'date', field='taken_ts', fn=lambda x: x[:10])
     db.index('Entry', 'tags')
 
     db.store('A', '*schema', 'Entry')
