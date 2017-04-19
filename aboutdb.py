@@ -81,21 +81,11 @@ class List:
 
 
 class Link:
-    def __init__(self, identity, field, target_identity):
-        self.identity = identity
-        self.field = field
-        self.target_identity = target_identity
-
-    def __repr__(self):
-        return "<%s::%s -> '%s'>" % (self.identity, self.field, self.target_identity)
-
-
-class Delete:
     def __init__(self, identity):
         self.identity = identity
 
     def __repr__(self):
-        return "<Delete %s>" % (self.identity)
+        return "<Link to '%s'>" % (self.identity)
 
 
 class Pointer:
@@ -113,11 +103,14 @@ class Register:
     def __init__(self):
         self._objects = {}
 
-    def store(self, object_id: str, field: str, pointer: Pointer):
+    def set(self, object_id: str, field: str, pointer: Pointer):
         if object_id in self._objects.keys():
             self._objects[object_id][field] = pointer
         else:
             self._objects[object_id] = {field: pointer}
+
+    def unset(self, object_id: str, field: str):
+        del self._objects[object_id][field]
 
     def get(self, identity):
         return self._objects[identity]
@@ -215,7 +208,7 @@ class Chunk:
         self._data = bytearray(size)
         self._position = 0
 
-    def store(self, data: bytes):
+    def set(self, data: bytes):
         assert type(data) is bytes
         size = len(data)
         if self._position + size > self.size:
@@ -242,7 +235,7 @@ class AboutDB:
             Index(schema, name, field=field, fn=fn)
             .build(self._index_db_conn))
 
-    def store(self, identity, field, value):
+    def set(self, identity: str, field: str, value):
         if type(value) is list:
             item = List(identity, field, value)
         else:
@@ -250,26 +243,26 @@ class AboutDB:
 
         logging.debug("Store %s", repr(item))
         chunk = self._chunk[0]
-        position, size = chunk.store(item.as_bytes())
-        self._register.store(identity, field, Pointer(0, type(value), position, size))
+        position, size = chunk.set(item.as_bytes())
+        self._register.set(identity, field, Pointer(0, type(value), position, size))
         # self._run_indexing_on(item)
 
-    def link(self, identity, field, target_identity):
-        self._data.append(Link(identity, field, target_identity))
+    def unset(self, identity: str, field: str):
+        self._register.unset(identity, field)
+
+    def link(self, identity: str, field: str, target_identity: str):
+        self._register.set(identity, field, Link(target_identity))
 
     def get(self, identity):
         logging.debug("Get %s", identity)
-        result = {}
         obj = self._register.get(identity)
+        result = {}
         pp(obj)
         for field, pointer in obj.items():
             if hasattr(pointer, 'identity'):
                 result[field] = self.get(pointer.identity)
             else:
                 result[field] = self._unpoint(pointer)
-
-        if not result:
-            raise KeyError
 
         return dict(result, _id=identity)
 
@@ -304,43 +297,3 @@ class AboutDB:
         for index in self._index:
             if index.handles(schema, item):
                 index.run(self._index_db_conn, item)
-
-
-if __name__ == '__main__':
-    FORMAT = colors.disable + '%(asctime)s [%(threadName)s] %(filename)s +%(levelno)s ' + \
-             '%(funcName)s %(levelname)s' + colors.reset + '\n  %(message)s'
-    logging.basicConfig(format=FORMAT, level=logging.DEBUG)
-
-    db = AboutDB()
-
-    db.index('Entry', 'taken_ts')
-    db.index('Entry', 'date', field='taken_ts', fn=lambda x: x[:10])
-    db.index('Entry', 'tags')
-
-    db.store('A', '*schema', 'Entry')
-    db.store('A', 'title', 'my title for A')
-    db.store('A', 'taken_ts', '2017-04-08 10:00:00')
-    db.store('F1', '*schema', 'Variant')
-    db.store('F1', 'variant', 'original')
-    db.store('F1', 'mimetype', 'image/jpeg')
-    db.store('F1', 'width', '1024')
-    db.store('F1', 'height', '768')
-    db.store('F1', 'filename', '/home/johan/test.jpg')
-    db.link('A', 'file', 'F1')
-    db.store('A', 'tags', ['a', 'b'])
-
-    db.store('B', '*schema', 'Entry')
-    db.store('B', 'title', 'my title for B')
-    db.store('B', 'taken_ts', '2017-04-08 10:00:00')
-    db.store('B', 'tags', ['b', 'c'])
-
-    pp(db._data)
-    pp(db.get('A'))
-
-    pp(db._index_db_conn.execute("SELECT * FROM SCHEMA").fetchall())
-    pp(db._index_db_conn.execute("SELECT * FROM ENTRY_TAKEN_TS").fetchall())
-    pp(db._index_db_conn.execute("SELECT * FROM ENTRY_DATE").fetchall())
-    pp(db._index_db_conn.execute("SELECT * FROM ENTRY_TAGS").fetchall())
-
-    pp(list(db.lookup('Entry', 'tags', 'a')))
-    pp(list(db.lookup('Entry', 'tags', 'b')))

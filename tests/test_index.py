@@ -10,12 +10,12 @@ from .fixtures import *
 @pytest.mark.skip
 def test_view_just_save(db):
     db.index('Entry', 'a')
-    db.store('A', '*schema', 'Entry')
-    db.store('A', 'a', 1)
-    db.store('A', 'b', 2)
-    db.store('B', '*schema', 'Entry')
-    db.store('B', 'a', 3)
-    db.store('B', 'b', 4)
+    db.set('A', '*schema', 'Entry')
+    db.set('A', 'a', 1)
+    db.set('A', 'b', 2)
+    db.set('B', '*schema', 'Entry')
+    db.set('B', 'a', 3)
+    db.set('B', 'b', 4)
 
     assert list(db.lookup('Entry', 'a', 1)) == ['A']
     assert list(db.lookup('Entry', 'a', 3)) == ['B']
@@ -24,16 +24,16 @@ def test_view_just_save(db):
 @pytest.mark.skip
 def test_view_save_and_update_value(db):
     db.index('Entry', 'a')
-    db.store('A', '*schema', 'Entry')
-    db.store('A', 'a', 1)
-    db.store('A', 'b', 2)
-    db.store('B', '*schema', 'Entry')
-    db.store('B', 'a', 3)
-    db.store('B', 'b', 4)
+    db.set('A', '*schema', 'Entry')
+    db.set('A', 'a', 1)
+    db.set('A', 'b', 2)
+    db.set('B', '*schema', 'Entry')
+    db.set('B', 'a', 3)
+    db.set('B', 'b', 4)
 
     pp(db._data)
 
-    db.store('B', 'a', 1)
+    db.set('B', 'a', 1)
 
     pp(db._data)
 
@@ -47,7 +47,7 @@ def test_view_save_and_delete(db):
     o2 = db.save({'a': 2, 'b': 22})
     db.save({'a': 3, 'b': 33})
     db.save({'a': 1, 'b': 11})
-    db.delete(o2['_id'])
+    db.delete(o2[ID])
     r = db.view('b_by_a')
     r = list(r)
     assert len(r) == 2
@@ -170,9 +170,9 @@ def test_add_with_custom_keys(db):
     db['a'] = {'a': 2, 'b': 22}
     db[1] = {'a': 3, 'b': 33}
     db[('a', 1)] = {'a': 1, 'b': 11}
-    assert db['a'] == {'_id': 'a', '_rev': 0, 'a': 2, 'b': 22}
-    assert db[1] == {'_id': 1, '_rev': 0, 'a': 3, 'b': 33}
-    assert db[('a', 1)] == {'_id': ['a', 1], '_rev': 0, 'a': 1, 'b': 11}
+    assert db['a'] == {ID: 'a', '_rev': 0, 'a': 2, 'b': 22}
+    assert db[1] == {ID: 1, '_rev': 0, 'a': 3, 'b': 33}
+    assert db[('a', 1)] == {ID: ['a', 1], '_rev': 0, 'a': 1, 'b': 11}
 
 
 @pytest.mark.skip
@@ -180,26 +180,26 @@ def test_add_with_custom_keys_and_set_next_id(db):
     db[10] = {'a': 3, 'b': 33}
     db.set_next_id(20)
     db[None] = {'a': 1, 'b': 11}
-    assert db[10] == {'_id': 10, '_rev': 0, 'a': 3, 'b': 33}
-    assert db[20] == {'_id': 20, '_rev': 0, 'a': 1, 'b': 11}
+    assert db[10] == {ID: 10, '_rev': 0, 'a': 3, 'b': 33}
+    assert db[20] == {ID: 20, '_rev': 0, 'a': 1, 'b': 11}
 
 
 @pytest.mark.skip
 def test_include_docs(db):
-    db.define('by_id', lambda o: (o['_id'], 1))
+    db.define('by_id', lambda o: (o[ID], 1))
     db[1] = {1: 11}
     db[2] = {2: 12}
     db[5] = {5: 15}
     db[7] = {7: 17}
     r = list(db.view('by_id', include_docs=True))
     assert r[0] == {'id': 1, 'key': 1, 'value': 1,
-                    'doc': {'_id': 1, '_rev': 0, '1': 11}}
+                    'doc': {ID: 1, '_rev': 0, '1': 11}}
     assert r[1] == {'id': 2, 'key': 2, 'value': 1,
-                    'doc': {'_id': 2, '_rev': 0, '2': 12}}
+                    'doc': {ID: 2, '_rev': 0, '2': 12}}
     assert r[2] == {'id': 5, 'key': 5, 'value': 1,
-                    'doc': {'_id': 5, '_rev': 0, '5': 15}}
+                    'doc': {ID: 5, '_rev': 0, '5': 15}}
     assert r[3] == {'id': 7, 'key': 7, 'value': 1,
-                    'doc': {'_id': 7, '_rev': 0, '7': 17}}
+                    'doc': {ID: 7, '_rev': 0, '7': 17}}
 
 
 @pytest.mark.skip
@@ -261,41 +261,41 @@ def test_reduce_by_group(db):
 
 @pytest.mark.skip
 def test_skip(db):
-    db.define('by_id', lambda o: (o['_id'], 1))
+    db.define('by_id', lambda o: (o[ID], 1))
     db[1] = {1: 11}
     db[2] = {2: 12}
     db[5] = {5: 15}
     db[7] = {7: 17}
     r = list(db.view('by_id', include_docs=True, skip=2))
     assert r[0] == {'id': 5, 'key': 5, 'value': 1,
-                    'doc': {'_id': 5, '_rev': 0, '5': 15}}
+                    'doc': {ID: 5, '_rev': 0, '5': 15}}
     assert r[1] == {'id': 7, 'key': 7, 'value': 1,
-                    'doc': {'_id': 7, '_rev': 0, '7': 17}}
+                    'doc': {ID: 7, '_rev': 0, '7': 17}}
 
 
 @pytest.mark.skip
 def test_limit(db):
-    db.define('by_id', lambda o: (o['_id'], 1))
+    db.define('by_id', lambda o: (o[ID], 1))
     db[1] = {1: 11}
     db[2] = {2: 12}
     db[5] = {5: 15}
     db[7] = {7: 17}
     r = list(db.view('by_id', include_docs=True, limit=2))
     assert r[0] == {'id': 1, 'key': 1, 'value': 1,
-                    'doc': {'_id': 1, '_rev': 0, '1': 11}}
+                    'doc': {ID: 1, '_rev': 0, '1': 11}}
     assert r[1] == {'id': 2, 'key': 2, 'value': 1,
-                    'doc': {'_id': 2, '_rev': 0, '2': 12}}
+                    'doc': {ID: 2, '_rev': 0, '2': 12}}
 
 
 @pytest.mark.skip
 def test_skip_and_limit(db):
-    db.define('by_id', lambda o: (o['_id'], 1))
+    db.define('by_id', lambda o: (o[ID], 1))
     db[1] = {1: 11}
     db[2] = {2: 12}
     db[5] = {5: 15}
     db[7] = {7: 17}
     r = list(db.view('by_id', include_docs=True, skip=1, limit=2))
     assert r[0] == {'id': 2, 'key': 2, 'value': 1,
-                    'doc': {'_id': 2, '_rev': 0, '2': 12}}
+                    'doc': {ID: 2, '_rev': 0, '2': 12}}
     assert r[1] == {'id': 5, 'key': 5, 'value': 1,
-                    'doc': {'_id': 5, '_rev': 0, '5': 15}}
+                    'doc': {ID: 5, '_rev': 0, '5': 15}}

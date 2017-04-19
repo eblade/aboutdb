@@ -11,6 +11,9 @@ FORMAT = '%(asctime)s [%(threadName)s] %(filename)s +%(levelno)s ' + \
 logging.basicConfig(format=FORMAT, level=logging.DEBUG)
 
 
+ID = '_id'  # this might change
+
+
 @pytest.fixture(scope='function')
 def db():
     db = AboutDB()
@@ -19,11 +22,11 @@ def db():
 
 @pytest.fixture(scope='function')
 def a(db):
-    db.store('A', 'a', 1)
+    db.set('A', 'a', 1)
     return db.get('A')
 
 
 @pytest.fixture(scope='function')
 def b(db):
-    db.store('B', 'a', 2)
+    db.set('B', 'a', 2)
     return db.get('B')
