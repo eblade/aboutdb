@@ -3,119 +3,45 @@
 import pytest
 import logging
 from aboutdb import AboutDB
+from pprint import pprint as pp
+from .fixtures import *
 
 
-# Logging
-FORMAT = '%(asctime)s [%(threadName)s] %(filename)s +%(levelno)s ' + \
-         '%(funcName)s %(levelname)s %(message)s'
-logging.basicConfig(format=FORMAT, level=logging.DEBUG)
-
-
-@pytest.fixture(scope='function')
-def db():
-    db = AboutDB()
-    yield db
-
-
-@pytest.fixture(scope='function')
-def a(db):
-    db.store('A', 'a', 1)
-    return db.get('A')
-
-
-@pytest.fixture(scope='function')
-def b(db):
-    db.store('B', 'a', 2)
-    return db.get('B')
-
-
-def test_init(db):
-    assert db is not None
-
-
-def test_save(db, a):
-    assert '_id' in a.keys()
-    assert a['_id'] is not None
-    assert a['_id'] == 'A'
-
-
-def test_get(db, a):
-    new_id = a['_id']
-    assert new_id is not None
-    a = db.get(new_id)
-    assert a is not None
-    assert a['a'] == 1
-    assert '_id' in a.keys()
-    assert a['_id'] == new_id
-    # assert '_rev' in o.keys()
-
-
-def test_get_2(db, a, b):
-    id_a = a['_id']
-    assert id_a is not None
-    id_b = b['_id']
-    assert id_b is not None
-    oa = db.get(id_a)
-    assert oa is not None
-    assert oa['a'] == 1
-    assert '_id' in oa.keys()
-    assert oa['_id'] == id_a
-    # assert '_rev' in oa.keys()
-    ob = db.get(id_b)
-    assert ob is not None
-    assert ob['a'] == 2
-    assert '_id' in ob.keys()
-    assert ob['_id'] == id_b
-    # assert '_rev' in ob.keys()
-
-
-def test_get_non_existing(db):
-    with pytest.raises(KeyError):
-        db.get('does-not-exist')
-
-
-def test_delete(db, a):
-    db.delete(a['_id'])
-    with pytest.raises(KeyError):
-        db.get(a['_id'])
-
-
-def test_update(db: AboutDB, a):
-    db.store(a['_id'], 'a', 2)
-    db.store(a['_id'], 'b', 3)
-    a = db.get(a['_id'])
-    assert(a['a'] == 2)
-    assert(a['b'] == 3)
-
-
+@pytest.mark.skip
 def test_view_just_save(db):
-    db.define('b_by_a', lambda o: (o['a'], o['b']))
-    db.save({'a': 2, 'b': 22})
-    db.save({'a': 3, 'b': 33})
-    db.save({'a': 1, 'b': 11})
-    r = db.view('b_by_a')
-    r = list(r)
-    assert len(r) == 3
-    assert r[0] == {'id': 2, 'key': 1, 'value': 11}
-    assert r[1] == {'id': 0, 'key': 2, 'value': 22}
-    assert r[2] == {'id': 1, 'key': 3, 'value': 33}
+    db.index('Entry', 'a')
+    db.store('A', '*schema', 'Entry')
+    db.store('A', 'a', 1)
+    db.store('A', 'b', 2)
+    db.store('B', '*schema', 'Entry')
+    db.store('B', 'a', 3)
+    db.store('B', 'b', 4)
+
+    assert list(db.lookup('Entry', 'a', 1)) == ['A']
+    assert list(db.lookup('Entry', 'a', 3)) == ['B']
 
 
+@pytest.mark.skip
 def test_view_save_and_update_value(db):
-    db.define('b_by_a', lambda o: (o['a'], o['b']))
-    db.save({'a': 2, 'b': 22})
-    db.save({'a': 3, 'b': 33})
-    o1 = db.save({'a': 1, 'b': 11})
-    o1['b'] = 1111
-    db.save(o1)
-    r = db.view('b_by_a')
-    r = list(r)
-    assert len(r) == 3
-    assert r[0] == {'id': 2, 'key': 1, 'value': 1111}
-    assert r[1] == {'id': 0, 'key': 2, 'value': 22}
-    assert r[2] == {'id': 1, 'key': 3, 'value': 33}
+    db.index('Entry', 'a')
+    db.store('A', '*schema', 'Entry')
+    db.store('A', 'a', 1)
+    db.store('A', 'b', 2)
+    db.store('B', '*schema', 'Entry')
+    db.store('B', 'a', 3)
+    db.store('B', 'b', 4)
+
+    pp(db._data)
+
+    db.store('B', 'a', 1)
+
+    pp(db._data)
+
+    assert list(db.lookup('Entry', 'a', 1)) == ['A', 'B']
+    assert list(db.lookup('Entry', 'a', 3)) == []
 
 
+@pytest.mark.skip
 def test_view_save_and_delete(db):
     db.define('b_by_a', lambda o: (o['a'], o['b']))
     o2 = db.save({'a': 2, 'b': 22})
@@ -129,6 +55,7 @@ def test_view_save_and_delete(db):
     assert r[1] == {'id': 1, 'key': 3, 'value': 33}
 
 
+@pytest.mark.skip
 def test_view_kickstart(db):
     db.save({'a': 2, 'b': 22})
     db.save({'a': 3, 'b': 33})
@@ -142,6 +69,7 @@ def test_view_kickstart(db):
     assert r[2] == {'id': 1, 'key': 3, 'value': 33}
 
 
+@pytest.mark.skip
 def test_view_by_key(db):
     db.save({'a': 2, 'b': 22})
     db.save({'a': 3, 'b': 33})
@@ -152,6 +80,7 @@ def test_view_by_key(db):
     assert r[0] == {'id': 0, 'key': 2, 'value': 22}
 
 
+@pytest.mark.skip
 def test_view_by_key_string(db):
     db.save({'a': '2', 'b': 22})
     db.save({'a': '3', 'b': 33})
@@ -162,6 +91,7 @@ def test_view_by_key_string(db):
     assert r[0] == {'id': 0, 'key': '2', 'value': 22}
 
 
+@pytest.mark.skip
 def test_view_by_key_two_values_same_key_before(db):
     db.define('b_by_a', lambda o: (o['a'], o['b']))
     db.save({'a': 2, 'b': 22})
@@ -174,6 +104,7 @@ def test_view_by_key_two_values_same_key_before(db):
     assert r[1] == {'id': 3, 'key': 2, 'value': 44}
 
 
+@pytest.mark.skip
 def test_view_by_key_two_values_same_key_after(db):
     db.save({'a': 2, 'b': 22})
     db.save({'a': 3, 'b': 33})
@@ -186,6 +117,7 @@ def test_view_by_key_two_values_same_key_after(db):
     assert r[1] == {'id': 3, 'key': 2, 'value': 44}
 
 
+@pytest.mark.skip
 def test_view_by_startkey(db):
     db.save({'a': 2, 'b': 22})
     db.save({'a': 3, 'b': 33})
@@ -197,6 +129,7 @@ def test_view_by_startkey(db):
     assert r[1] == {'id': 1, 'key': 3, 'value': 33}
 
 
+@pytest.mark.skip
 def test_view_by_startkey_after(db):
     db.save({'a': 3, 'b': 33})
     db.save({'a': 4, 'b': 44})
@@ -208,6 +141,7 @@ def test_view_by_startkey_after(db):
     assert r[1] == {'id': 1, 'key': 4, 'value': 44}
 
 
+@pytest.mark.skip
 def test_view_by_endkey(db):
     db.save({'a': 2, 'b': 22})
     db.save({'a': 3, 'b': 33})
@@ -219,6 +153,7 @@ def test_view_by_endkey(db):
     assert r[1] == {'id': 0, 'key': 2, 'value': 22}
 
 
+@pytest.mark.skip
 def test_view_by_endkey_after(db):
     db.save({'a': 2, 'b': 22})
     db.save({'a': 4, 'b': 44})
@@ -230,6 +165,7 @@ def test_view_by_endkey_after(db):
     assert r[1] == {'id': 0, 'key': 2, 'value': 22}
 
 
+@pytest.mark.skip
 def test_add_with_custom_keys(db):
     db['a'] = {'a': 2, 'b': 22}
     db[1] = {'a': 3, 'b': 33}
@@ -239,6 +175,7 @@ def test_add_with_custom_keys(db):
     assert db[('a', 1)] == {'_id': ['a', 1], '_rev': 0, 'a': 1, 'b': 11}
 
 
+@pytest.mark.skip
 def test_add_with_custom_keys_and_set_next_id(db):
     db[10] = {'a': 3, 'b': 33}
     db.set_next_id(20)
@@ -247,6 +184,7 @@ def test_add_with_custom_keys_and_set_next_id(db):
     assert db[20] == {'_id': 20, '_rev': 0, 'a': 1, 'b': 11}
 
 
+@pytest.mark.skip
 def test_include_docs(db):
     db.define('by_id', lambda o: (o['_id'], 1))
     db[1] = {1: 11}
@@ -264,6 +202,7 @@ def test_include_docs(db):
                     'doc': {'_id': 7, '_rev': 0, '7': 17}}
 
 
+@pytest.mark.skip
 def test_yielding_mapping_function(db):
     def yielder(o):
         yield (o['a'], 1), o['b']
@@ -288,6 +227,7 @@ def test_yielding_mapping_function(db):
     assert r[8] == {'id': 1, 'key': (3, 3), 'value': 99}
 
 
+@pytest.mark.skip
 def test_reduce_by_group(db):
     def sum_per(field, values):
         result = {}
@@ -319,6 +259,7 @@ def test_reduce_by_group(db):
     assert r[2] == {'key': 'c', 'value': {'new': 1, 'old': 1}}
 
 
+@pytest.mark.skip
 def test_skip(db):
     db.define('by_id', lambda o: (o['_id'], 1))
     db[1] = {1: 11}
@@ -332,6 +273,7 @@ def test_skip(db):
                     'doc': {'_id': 7, '_rev': 0, '7': 17}}
 
 
+@pytest.mark.skip
 def test_limit(db):
     db.define('by_id', lambda o: (o['_id'], 1))
     db[1] = {1: 11}
@@ -345,6 +287,7 @@ def test_limit(db):
                     'doc': {'_id': 2, '_rev': 0, '2': 12}}
 
 
+@pytest.mark.skip
 def test_skip_and_limit(db):
     db.define('by_id', lambda o: (o['_id'], 1))
     db[1] = {1: 11}

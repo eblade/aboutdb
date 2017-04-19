@@ -51,6 +51,21 @@ class Item:
         self.field = field
         self.value = value
 
+    def as_bytes(self):
+        result = b''
+        if type(self.value) is str:
+            result = self.value.encode('utf-8')
+        elif type(self.value) is int:
+            result = self.value.to_bytes(4, "big")
+        logging.debug("Converted '%s' to %s", self.value, result)
+        return result
+
+    def from_bytes(type, data):
+        if type is str:
+            return data.decode('utf-8')
+        elif type is int:
+            return int.from_bytes(data, "big")
+
     def __repr__(self):
         return "<%s::%s = '%s'>" % (self.identity, self.field, self.value)
 
@@ -81,6 +96,34 @@ class Delete:
 
     def __repr__(self):
         return "<Delete %s>" % (self.identity)
+
+
+class Pointer:
+    def __init__(self, chunk: int, type: type, position: int, size: int):
+        self.chunk = chunk
+        self.type = type
+        self.position = position
+        self.size = size
+
+    def __repr__(self):
+        return "<Pnt [%s:%d] %s:%d>" % (self.type.__name__, self.size, self.chunk, self.position)
+
+
+class Register:
+    def __init__(self):
+        self._objects = {}
+
+    def store(self, object_id: str, field: str, pointer: Pointer):
+        if object_id in self._objects.keys():
+            self._objects[object_id][field] = pointer
+        else:
+            self._objects[object_id] = {field: pointer}
+
+    def get(self, identity):
+        return self._objects[identity]
+
+    def delete(self, identity):
+        del self._objects[identity]
 
 
 class Index:
@@ -156,7 +199,7 @@ class Index:
 
     def lookup(self, conn: sqlite3.Connection, value: str):
         cur = conn.execute("SELECT OBJECT_ID FROM %s WHERE VALUE = ?"
-                           % self.table_name, value)
+                           % self.table_name, self.field_type(value))
         return (x[0] for x in cur)
 
     def get_value_by_id(self, conn, identity):
@@ -165,11 +208,33 @@ class Index:
             """ % self.table_name, (identity,)).fetchone() or (None,))[0]
 
 
+class Chunk:
+    def __init__(self, identity, size=2 << 16):
+        self.identity = identity
+        self.size = size
+        self._data = bytearray(size)
+        self._position = 0
+
+    def store(self, data: bytes):
+        assert type(data) is bytes
+        size = len(data)
+        if self._position + size > self.size:
+            raise ValueError("Not enough space left in chunk")
+        self._data[self._position:self._position+size] = data
+        start = self._position
+        self._position += size
+        return (start, size)
+
+    def get(self, position, size):
+        return self._data[position:position+size]
+
+
 class AboutDB:
     def __init__(self):
-        self._data = []
+        self._chunk = [Chunk(0)]
         self._index = []
         self._index_db_conn = sqlite3.connect(':memory:')
+        self._register = Register()
         self.index(None, '*schema')
 
     def index(self, schema, name, field=None, fn=None):
@@ -182,9 +247,12 @@ class AboutDB:
             item = List(identity, field, value)
         else:
             item = Item(identity, field, value)
+
         logging.debug("Store %s", repr(item))
-        self._run_indexing_on(item)
-        self._data.append(item)
+        chunk = self._chunk[0]
+        position, size = chunk.store(item.as_bytes())
+        self._register.store(identity, field, Pointer(0, type(value), position, size))
+        # self._run_indexing_on(item)
 
     def link(self, identity, field, target_identity):
         self._data.append(Link(identity, field, target_identity))
@@ -192,21 +260,13 @@ class AboutDB:
     def get(self, identity):
         logging.debug("Get %s", identity)
         result = {}
-        for x in reversed(self._data):
-            logging.debug("Read %s", repr(x))
-            if x.identity != identity:
-                continue
-            if isinstance(x, Delete):
-                if not result:
-                    raise KeyError
-                else:
-                    break
-            if x.field in result.keys():
-                continue
-            if hasattr(x, 'target_identity'):
-                result[x.field] = self.get(x.target_identity)
+        obj = self._register.get(identity)
+        pp(obj)
+        for field, pointer in obj.items():
+            if hasattr(pointer, 'identity'):
+                result[field] = self.get(pointer.identity)
             else:
-                result[x.field] = x.value
+                result[field] = self._unpoint(pointer)
 
         if not result:
             raise KeyError
@@ -215,7 +275,7 @@ class AboutDB:
 
     def delete(self, identity):
         logging.debug("Delete %s", identity)
-        self._data.append(Delete(identity))
+        self._register.delete(identity)
 
     def lookup(self, schema, field, value):
         logging.debug("Lookup %s::%s = %s", schema, field, value)
@@ -229,10 +289,15 @@ class AboutDB:
             if index.handles_field(field):
                 return index.get_value_by_id(self._index_db_conn, identity)
 
-        for item in reversed(self._data):
-            if item.field == field and item.identity == identity:
-                logging.debug("Full scan found %s", repr(item))
-                return item.value
+        pointer = self._objects[identity][field]
+        return self._unpoint(pointer)
+
+    def _unpoint(self, pointer):
+        logging.debug("Unpoint %s", pointer)
+        chunk = self._chunk[pointer.chunk]
+        data = chunk.get(pointer.position, pointer.size)
+        logging.debug(data)
+        return Item.from_bytes(pointer.type, data)
 
     def _run_indexing_on(self, item: Item):
         schema = self.get_field_by_id(item.identity, '*schema')
